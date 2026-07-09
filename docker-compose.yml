@@ -1,0 +1,99 @@
+services:
+  crypto-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: crypto-agent-mvp:local
+    container_name: crypto-agent
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-local}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      APP_HOST: ${APP_HOST:-0.0.0.0}
+      APP_PORT: ${APP_PORT:-8000}
+      CRYPTO_AGENT_MODE: ${CRYPTO_AGENT_MODE:-paper}
+      CRYPTO_AGENT_CMD: ${CRYPTO_AGENT_CMD:-}
+      CRYPTO_AGENT_TIMEZONE: ${CRYPTO_AGENT_TIMEZONE:-UTC}
+      QUOTE_ASSET: ${QUOTE_ASSET:-USDT}
+      TOP_ASSET_LIMIT: ${TOP_ASSET_LIMIT:-5}
+      SIGNAL_INTERVAL_SECONDS: ${SIGNAL_INTERVAL_SECONDS:-60}
+      SIGNAL_COOLDOWN_SECONDS: ${SIGNAL_COOLDOWN_SECONDS:-900}
+      MINIMUM_CONFIDENCE: ${MINIMUM_CONFIDENCE:-0.62}
+      CRYPTO_AGENT_SYMBOLS: ${CRYPTO_AGENT_SYMBOLS:-BTC/USDT,ETH/USDT,SOL/USDT}
+      CRYPTO_AGENT_TIMEFRAME: ${CRYPTO_AGENT_TIMEFRAME:-5m}
+      CRYPTO_AGENT_POLL_INTERVAL_SECONDS: ${CRYPTO_AGENT_POLL_INTERVAL_SECONDS:-60}
+      EXCHANGE_PROVIDER: ${EXCHANGE_PROVIDER:-binance}
+      COINGECKO_BASE_URL: ${COINGECKO_BASE_URL:-https://api.coingecko.com/api/v3}
+      BINANCE_STREAM_BASE_URL: ${BINANCE_STREAM_BASE_URL:-wss://stream.binance.com:9443/stream}
+      SAFETY_DRY_RUN: ${SAFETY_DRY_RUN:-true}
+      KILL_SWITCH: ${KILL_SWITCH:-false}
+      SIGNAL_MIN_CONFIDENCE: ${SIGNAL_MIN_CONFIDENCE:-0.70}
+      MAX_SIGNALS_PER_HOUR: ${MAX_SIGNALS_PER_HOUR:-6}
+      MAX_POSITION_RISK_PCT: ${MAX_POSITION_RISK_PCT:-1.0}
+      MAX_DAILY_LOSS_PCT: ${MAX_DAILY_LOSS_PCT:-3.0}
+      ALLOW_LIVE_TRADING: ${ALLOW_LIVE_TRADING:-false}
+      TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TELEGRAM_PARSE_MODE: ${TELEGRAM_PARSE_MODE:-Markdown}
+      BINANCE_API_KEY: ${BINANCE_API_KEY:-}
+      BINANCE_API_SECRET: ${BINANCE_API_SECRET:-}
+      COINBASE_API_KEY: ${COINBASE_API_KEY:-}
+      COINBASE_API_SECRET: ${COINBASE_API_SECRET:-}
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY:-}
+      DATA_DIR: /app/data
+      LOG_DIR: /app/logs
+      SQLITE_PATH: /app/data/crypto_agent.sqlite3
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://crypto:crypto@postgres:5432/crypto_agent}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CRYPTO_AGENT_HEALTHCHECK_URL: ${CRYPTO_AGENT_HEALTHCHECK_URL:-http://127.0.0.1:8000/health}
+      CRYPTO_AGENT_HEALTHCHECK_CMD: ${CRYPTO_AGENT_HEALTHCHECK_CMD:-}
+    ports:
+      - "${HOST_PORT:-8000}:${APP_PORT:-8000}"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/app/scripts/healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: crypto-agent-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-crypto_agent}
+      POSTGRES_USER: ${POSTGRES_USER:-crypto}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-crypto}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: crypto-agent-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+  redis-data:
