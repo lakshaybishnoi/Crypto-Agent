@@ -28,6 +28,10 @@ cp .env.example .env
 | `SIGNAL_INTERVAL_SECONDS` | `60` | Signal loop cadence for app code. |
 | `SIGNAL_COOLDOWN_SECONDS` | `900` | Cooldown window between repeated signals. |
 | `MINIMUM_CONFIDENCE` | `0.62` | Current app-level confidence threshold. |
+| `BACKFILL_CANDLES` | `200` | Historical candles fetched per symbol/timeframe at runner startup so indicators are warm from the first live candle. |
+| `STOP_ATR_MULTIPLIER` | `1.5` | Stop distance in ATR multiples. Tuned value from the walk-forward optimizer: `2.0`. |
+| `TARGET_R_MULTIPLE` | `1.5` | First take-profit as a multiple of the stop distance. Tuned value: `0.5` (tight target, high hit rate). |
+| `REGIME_FILTER` | empty | Restrict BUY/SELL alerts to `trending` or `ranging` regimes; empty allows any. |
 | `CRYPTO_AGENT_SYMBOLS` | `BTC/USDT,ETH/USDT,SOL/USDT` | Comma-separated market universe. |
 | `CRYPTO_AGENT_TIMEFRAME` | `5m` | Candle interval for the default signal loop. |
 | `CRYPTO_AGENT_POLL_INTERVAL_SECONDS` | `60` | Worker poll cadence. |

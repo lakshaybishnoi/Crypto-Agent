@@ -123,8 +123,9 @@ async def refresh_and_evaluate(
 async def evaluate_signal(
     symbol: str,
     service: Annotated[AgentService, Depends(get_service)],
+    timeframe: str | None = Query(default=None),
 ) -> dict[str, object]:
-    return (await service.evaluate_symbol(symbol)).as_dict()
+    return (await service.evaluate_symbol(symbol, timeframe=timeframe)).as_dict()
 
 
 @router.get("/signals", tags=["signals"])
@@ -165,6 +166,31 @@ async def sentiment_history(
 ) -> list[dict[str, object]]:
     storage = _storage_or_404(service)
     return [_as_payload(snapshot) for snapshot in storage.sentiment.list(symbol, source, limit)]
+
+
+@router.get("/history/outcomes", tags=["history"])
+async def outcome_history(
+    service: Annotated[AgentService, Depends(get_service)],
+    symbol: str | None = Query(default=None),
+    timeframe: str | None = Query(default=None),
+    outcome: str | None = Query(default=None),
+    limit: int = Query(default=250, ge=1, le=5000),
+) -> list[dict[str, object]]:
+    storage = _storage_or_404(service)
+    return [
+        _as_payload(item)
+        for item in storage.signal_outcomes.list(symbol, timeframe, outcome, limit)
+    ]
+
+
+@router.get("/accuracy", tags=["signals"])
+async def signal_accuracy(
+    service: Annotated[AgentService, Depends(get_service)],
+    symbol: str | None = Query(default=None),
+    timeframe: str | None = Query(default=None),
+) -> dict[str, object]:
+    storage = _storage_or_404(service)
+    return _as_payload(storage.signal_outcomes.hit_rate(symbol, timeframe))
 
 
 @router.get("/paper/portfolio", tags=["paper-trading"])

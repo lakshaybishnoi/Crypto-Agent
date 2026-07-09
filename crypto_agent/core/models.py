@@ -113,6 +113,7 @@ class SignalComponent:
     score: float
     weight: float
     reason: str
+    has_data: bool = True
 
     @property
     def weighted_score(self) -> float:
@@ -153,6 +154,7 @@ class MarketSignal:
                     "score": component.score,
                     "weight": component.weight,
                     "reason": component.reason,
+                    "has_data": component.has_data,
                 }
                 for component in self.components
             ],

@@ -4,14 +4,41 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, datetime
 
 from crypto_agent.config import get_settings
 from crypto_agent.core.models import SignalAction
 from crypto_agent.ingestion.binance import BinanceKlineStreamer, BinanceStreamBuilder
+from crypto_agent.ingestion.historical import BinanceHistoricalClient
 from crypto_agent.notifications import TelegramNotifier
 from crypto_agent.services.agent import AgentService, build_agent_service
 
 LOGGER = logging.getLogger(__name__)
+
+
+async def backfill_history(
+    service: AgentService,
+    symbols: list[str],
+    intervals: list[str],
+    limit: int,
+    client: BinanceHistoricalClient | None = None,
+) -> None:
+    """Warm indicator history so signals are meaningful from the first live candle."""
+    client = client or BinanceHistoricalClient()
+    now = datetime.now(UTC)
+    for symbol in symbols:
+        for interval in intervals:
+            try:
+                candles = await client.klines(symbol, interval=interval, limit=limit)
+            except Exception:
+                LOGGER.warning("Backfill failed for %s %s", symbol, interval, exc_info=True)
+                continue
+            closed = [
+                candle for candle in candles if candle.close_time and candle.close_time <= now
+            ]
+            for candle in closed:
+                service.ingest_candle(candle)
+            LOGGER.info("Backfilled %s closed %s candles for %s", len(closed), interval, symbol)
 
 
 async def run_live_agent(
@@ -21,7 +48,11 @@ async def run_live_agent(
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper())
     service = service or build_agent_service(settings)
-    intervals = intervals or ["1m", "15m"]
+    intervals = intervals or [
+        interval.strip()
+        for interval in settings.signal_timeframes.split(",")
+        if interval.strip()
+    ]
 
     assets = await service.refresh_assets()
     symbols = [asset.trading_symbol for asset in assets]
@@ -31,10 +62,12 @@ async def run_live_agent(
     notifier = _build_notifier()
     streamer = BinanceKlineStreamer(BinanceStreamBuilder(base_url=settings.binance_stream_base_url))
 
+    await backfill_history(service, symbols, intervals, settings.backfill_candles)
+
     LOGGER.info("Monitoring %s on intervals %s", ", ".join(symbols), ", ".join(intervals))
     async for candle in streamer.stream(symbols, intervals):
         service.ingest_candle(candle)
-        signal = await service.evaluate_symbol(candle.symbol)
+        signal = await service.evaluate_symbol(candle.symbol, timeframe=candle.timeframe)
         LOGGER.info(
             "%s %s confidence=%.2f suppressed=%s",
             signal.symbol,

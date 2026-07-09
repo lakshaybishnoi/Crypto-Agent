@@ -108,7 +108,10 @@ Keep Telegram disabled in development unless you are intentionally testing notif
 Telegram-ready Markdown text. It accepts current `MarketSignal` objects and plain dictionaries, so
 paper and backtest jobs can feed the same formatter.
 
-See [docs/phase2.md](docs/phase2.md) for paper mode, backtest, persistence, and report usage.
+See [docs/phase2.md](docs/phase2.md) for paper mode, backtest, persistence, and report usage,
+and [docs/technical.md](docs/technical.md) for the full technical documentation: architecture,
+signal engine internals, evaluation methodology, the walk-forward optimizer, and the currently
+deployed strategy with its validation numbers.
 
 ## API Keys
 
@@ -145,9 +148,27 @@ Useful local endpoints in API mode:
 - `GET /assets`
 - `POST /assets/refresh`
 - `POST /candles`
-- `POST /signals/{symbol}`
+- `POST /signals/{symbol}` (optional `?timeframe=15m`)
 - `GET /signals`
+- `GET /accuracy` — live hit rate from labeled signal outcomes
+- `GET /history/outcomes` — labeled signal outcomes (take_profit / stop_loss / expired)
 - `POST /streams/binance`
+
+## Signal Accuracy Evaluation
+
+Signal quality is measured, not assumed. Every non-suppressed BUY/SELL emitted live is
+tracked against subsequent candles and labeled `take_profit`, `stop_loss`, or `expired` in the
+`signal_outcomes` table (`GET /accuracy` summarizes it). The same labeling runs offline over
+historical data:
+
+```sh
+make evaluate SYMBOLS="BTCUSDT ETHUSDT" TIMEFRAMES="15m" DAYS=30
+```
+
+This replays recent Binance history through the signal engine and reports hit rate,
+per-side precision, winner/loser confidence, forward returns, and backtest PnL per
+symbol/timeframe. Run it before and after any engine change; a change that does not move
+these numbers is not an improvement.
 
 ## Operations
 

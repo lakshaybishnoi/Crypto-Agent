@@ -105,6 +105,7 @@ class BacktestEngine:
         if not candles:
             return self._empty_result()
 
+        self.signal_engine.reset_alert_state()
         ordered_candles = sorted(candles, key=lambda candle: candle.open_time)
         histories: dict[str, list[Candle]] = {}
         last_candles: dict[str, Candle] = {}

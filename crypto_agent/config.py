@@ -38,6 +38,13 @@ if BaseSettings is not None:
         minimum_confidence: float = Field(
             default=0.62, validation_alias="MINIMUM_CONFIDENCE"
         )
+        backfill_candles: int = Field(default=200, validation_alias="BACKFILL_CANDLES")
+        signal_timeframes: str = Field(default="1m,15m", validation_alias="SIGNAL_TIMEFRAMES")
+        stop_atr_multiplier: float = Field(
+            default=1.5, validation_alias="STOP_ATR_MULTIPLIER"
+        )
+        target_r_multiple: float = Field(default=1.5, validation_alias="TARGET_R_MULTIPLE")
+        regime_filter: str | None = Field(default=None, validation_alias="REGIME_FILTER")
 
         coingecko_base_url: str = Field(
             default="https://api.coingecko.com/api/v3", validation_alias="COINGECKO_BASE_URL"
@@ -97,6 +104,19 @@ else:
             self.minimum_confidence = float(
                 _setting("MINIMUM_CONFIDENCE", "0.62", overrides, "minimum_confidence")
             )
+            self.backfill_candles = int(
+                _setting("BACKFILL_CANDLES", "200", overrides, "backfill_candles")
+            )
+            self.signal_timeframes = _setting(
+                "SIGNAL_TIMEFRAMES", "1m,15m", overrides, "signal_timeframes"
+            )
+            self.stop_atr_multiplier = float(
+                _setting("STOP_ATR_MULTIPLIER", "1.5", overrides, "stop_atr_multiplier")
+            )
+            self.target_r_multiple = float(
+                _setting("TARGET_R_MULTIPLE", "1.5", overrides, "target_r_multiple")
+            )
+            self.regime_filter = _optional_setting("REGIME_FILTER", overrides, "regime_filter")
             self.coingecko_base_url = _setting(
                 "COINGECKO_BASE_URL",
                 "https://api.coingecko.com/api/v3",

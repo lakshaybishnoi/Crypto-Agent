@@ -8,8 +8,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from crypto_agent.core.models import Asset, Candle, MarketSignal
+from crypto_agent.core.models import Asset, Candle, MarketSignal, SignalAction
 from crypto_agent.core.stablecoins import is_stablecoin
+from crypto_agent.core.timeframes import timeframe_seconds
+from crypto_agent.evaluation.outcomes import OutcomeTracker
 from crypto_agent.ingestion.coingecko import CoinGeckoClient
 from crypto_agent.ingestion.sentiment import SentimentProvider, StaticSentimentProvider
 from crypto_agent.paper import PaperEvent, PaperTradingConfig, PaperTradingEngine
@@ -30,9 +32,13 @@ class AgentService:
     social_provider: SentimentProvider
     storage: SQLiteStorage | None = None
     paper_engine: PaperTradingEngine | None = None
+    outcome_tracker: OutcomeTracker | None = field(default_factory=OutcomeTracker)
     max_candles_per_symbol: int = 500
     assets: list[Asset] = field(default_factory=list)
-    candles: dict[str, deque[Candle]] = field(default_factory=lambda: defaultdict(deque))
+    # Candle history is kept per (symbol, timeframe) so indicators never mix bar sizes.
+    candles: dict[str, dict[str, deque[Candle]]] = field(
+        default_factory=lambda: defaultdict(dict)
+    )
     latest_signals: dict[str, MarketSignal] = field(default_factory=dict)
 
     async def refresh_assets(self) -> list[Asset]:
@@ -57,8 +63,12 @@ class AgentService:
 
     def ingest_candle(self, candle: Candle) -> None:
         symbol = candle.symbol.upper()
-        series = self.candles[symbol]
-        series.append(candle)
+        series = self._series(symbol, candle.timeframe)
+        if series and candle.open_time <= series[-1].open_time:
+            if candle.open_time == series[-1].open_time:
+                series[-1] = candle
+        else:
+            series.append(candle)
         while len(series) > self.max_candles_per_symbol:
             series.popleft()
         if self.storage is not None:
@@ -66,21 +76,41 @@ class AgentService:
         if self.paper_engine is not None:
             event = self.paper_engine.process_candle(candle)
             self._persist_paper_event(event)
+        if self.outcome_tracker is not None:
+            for outcome in self.outcome_tracker.on_candle(candle):
+                if self.storage is not None:
+                    self.storage.signal_outcomes.save(outcome)
 
-    async def evaluate_symbol(self, symbol: str) -> MarketSignal:
+    async def evaluate_symbol(self, symbol: str, timeframe: str | None = None) -> MarketSignal:
         symbol = symbol.upper()
+        timeframe = timeframe or self._default_timeframe(symbol)
+        series = self._series(symbol, timeframe) if timeframe else deque()
         news = await self.news_provider.score(symbol)
         social = await self.social_provider.score(symbol)
         signal = self.signal_engine.evaluate(
-            symbol, list(self.candles[symbol]), news=news, social=social
+            symbol,
+            list(series),
+            news=news,
+            social=social,
+            timeframe=timeframe,
+            higher_timeframe_candles=(
+                self._higher_timeframe_series(symbol, timeframe) if timeframe else None
+            ),
         )
         self.latest_signals[symbol] = signal
         if self.storage is not None:
             self.storage.sentiment.save(news, symbol=symbol)
             self.storage.sentiment.save(social, symbol=symbol)
             self.storage.signals.save(signal)
-        if self.paper_engine is not None and self.candles[symbol]:
-            event = self.paper_engine.process_signal(signal, self.candles[symbol][-1])
+        if (
+            self.outcome_tracker is not None
+            and signal.action in {SignalAction.BUY, SignalAction.SELL}
+            and not signal.suppressed
+            and series
+        ):
+            self.outcome_tracker.track(signal, after=series[-1].open_time)
+        if self.paper_engine is not None and series:
+            event = self.paper_engine.process_signal(signal, series[-1])
             self._persist_paper_event(event)
         return signal
 
@@ -106,6 +136,47 @@ class AgentService:
         if self.paper_engine is None:
             return None
         return self.paper_engine.snapshot()
+
+    def candle_history(self, symbol: str, timeframe: str | None = None) -> list[Candle]:
+        timeframe = timeframe or self._default_timeframe(symbol)
+        if timeframe is None:
+            return []
+        return list(self._series(symbol.upper(), timeframe))
+
+    def _series(self, symbol: str, timeframe: str) -> deque[Candle]:
+        frames = self.candles[symbol.upper()]
+        if timeframe not in frames:
+            frames[timeframe] = deque()
+        return frames[timeframe]
+
+    def _default_timeframe(self, symbol: str) -> str | None:
+        frames = self.candles.get(symbol.upper())
+        populated = {tf: series for tf, series in (frames or {}).items() if series}
+        if not populated:
+            return None
+        return max(populated, key=lambda tf: len(populated[tf]))
+
+    def _higher_timeframe_series(self, symbol: str, timeframe: str) -> list[Candle] | None:
+        """Next-larger populated timeframe for trend confluence, if one exists."""
+        try:
+            base_seconds = timeframe_seconds(timeframe)
+        except ValueError:
+            return None
+        frames = self.candles.get(symbol.upper()) or {}
+        candidates: list[tuple[int, str]] = []
+        for candidate, series in frames.items():
+            if len(series) < 21:
+                continue
+            try:
+                seconds = timeframe_seconds(candidate)
+            except ValueError:
+                continue
+            if seconds > base_seconds:
+                candidates.append((seconds, candidate))
+        if not candidates:
+            return None
+        _, best = min(candidates)
+        return list(frames[best])
 
     def _persist_paper_event(self, event: PaperEvent | None) -> None:
         if self.storage is None or event is None:
@@ -147,13 +218,20 @@ class AgentService:
 
 def build_agent_service(settings: Settings | None = None) -> AgentService:
     from crypto_agent.config import get_settings
+    from crypto_agent.signals.risk import RiskManager
 
     settings = settings or get_settings()
+    target_r = settings.target_r_multiple
     signal_engine = SignalEngine(
         SignalEngineConfig(
             minimum_confidence=settings.minimum_confidence,
             cooldown_seconds=settings.signal_cooldown_seconds,
-        )
+            regime_filter=settings.regime_filter or None,
+        ),
+        risk_manager=RiskManager(
+            stop_atr_multiplier=settings.stop_atr_multiplier,
+            target_multipliers=(target_r, target_r * 2),
+        ),
     )
     paper_engine = PaperTradingEngine.with_config(
         PaperTradingConfig(

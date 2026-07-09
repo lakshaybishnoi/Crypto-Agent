@@ -158,6 +158,54 @@ def atr(candles: list[Candle], period: int = 14) -> list[float | None]:
     return ema(true_range(candles), period)
 
 
+def adx(candles: list[Candle], period: int = 14) -> list[float | None]:
+    """Average Directional Index with Wilder smoothing; higher means stronger trend."""
+    validate_period(period)
+    result: list[float | None] = [None] * len(candles)
+    if len(candles) < period * 2:
+        return result
+
+    plus_dm: list[float] = [0.0]
+    minus_dm: list[float] = [0.0]
+    for index in range(1, len(candles)):
+        up_move = candles[index].high - candles[index - 1].high
+        down_move = candles[index - 1].low - candles[index].low
+        plus_dm.append(up_move if up_move > down_move and up_move > 0 else 0.0)
+        minus_dm.append(down_move if down_move > up_move and down_move > 0 else 0.0)
+
+    ranges = true_range(candles)
+    smoothed_tr = sum(ranges[1 : period + 1])
+    smoothed_plus = sum(plus_dm[1 : period + 1])
+    smoothed_minus = sum(minus_dm[1 : period + 1])
+
+    dx_values: list[float] = []
+    dx_indexes: list[int] = []
+    for index in range(period, len(candles)):
+        if index > period:
+            smoothed_tr = smoothed_tr - (smoothed_tr / period) + ranges[index]
+            smoothed_plus = smoothed_plus - (smoothed_plus / period) + plus_dm[index]
+            smoothed_minus = smoothed_minus - (smoothed_minus / period) + minus_dm[index]
+        if smoothed_tr <= 0:
+            dx_values.append(0.0)
+            dx_indexes.append(index)
+            continue
+        plus_di = 100 * smoothed_plus / smoothed_tr
+        minus_di = 100 * smoothed_minus / smoothed_tr
+        di_sum = plus_di + minus_di
+        dx_values.append(100 * abs(plus_di - minus_di) / di_sum if di_sum else 0.0)
+        dx_indexes.append(index)
+
+    if len(dx_values) < period:
+        return result
+
+    adx_value = sum(dx_values[:period]) / period
+    result[dx_indexes[period - 1]] = adx_value
+    for offset in range(period, len(dx_values)):
+        adx_value = ((adx_value * (period - 1)) + dx_values[offset]) / period
+        result[dx_indexes[offset]] = adx_value
+    return result
+
+
 def latest_defined(values: list[float | None]) -> float | None:
     for value in reversed(values):
         if value is not None:

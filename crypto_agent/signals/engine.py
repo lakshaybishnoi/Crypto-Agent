@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from crypto_agent.analysis.indicators import (
+    adx,
+    atr,
     bollinger_bands,
     ema,
     latest_defined,
@@ -34,6 +36,13 @@ class SignalEngineConfig:
     news_weight: float = 0.20
     social_weight: float = 0.15
     minimum_candles: int = 50
+    # ADX regime boundaries: above trend_threshold favors trend-following,
+    # below range_threshold favors mean reversion, linear blend in between.
+    adx_trend_threshold: float = 25.0
+    adx_range_threshold: float = 20.0
+    # When set ("trending" or "ranging"), BUY/SELL is only allowed in that regime;
+    # signals in other regimes are downgraded to WATCH.
+    regime_filter: str | None = None
 
 
 @dataclass(slots=True)
@@ -50,6 +59,7 @@ class SignalEngine:
         social: SentimentSnapshot | None = None,
         timeframe: str | None = None,
         now: datetime | None = None,
+        higher_timeframe_candles: list[Candle] | None = None,
     ) -> MarketSignal:
         now = now or datetime.now(UTC)
         timeframe = timeframe or (candles[-1].timeframe if candles else "unknown")
@@ -68,14 +78,22 @@ class SignalEngine:
                 created_at=now,
             )
 
+        technical, regime = self._technical_component(candles)
         components = [
-            self._technical_component(candles),
+            technical,
             self._volume_component(candles),
             self._sentiment_component("news", news, self.config.news_weight),
             self._sentiment_component("social", social, self.config.social_weight),
         ]
-        total_weight = sum(component.weight for component in components)
-        raw_score = sum(component.weighted_score for component in components) / total_weight
+        # Only components with live data participate, so a missing feed does not
+        # dilute confidence toward zero.
+        scored = [component for component in components if component.has_data]
+        total_weight = sum(component.weight for component in scored)
+        raw_score = (
+            sum(component.weighted_score for component in scored) / total_weight
+            if total_weight > 0
+            else 0.0
+        )
         confidence = clamp(abs(raw_score), 0.0, 1.0)
 
         if confidence >= self.config.minimum_confidence:
@@ -85,12 +103,33 @@ class SignalEngine:
         else:
             action = SignalAction.HOLD
 
+        veto_note = ""
+        if (
+            action in {SignalAction.BUY, SignalAction.SELL}
+            and self.config.regime_filter
+            and regime != self.config.regime_filter
+        ):
+            veto_note = (
+                f" Regime is {regime}, not {self.config.regime_filter}; downgraded to watch."
+            )
+            action = SignalAction.WATCH
+
+        if action in {SignalAction.BUY, SignalAction.SELL} and higher_timeframe_candles:
+            higher_trend = self._timeframe_trend(higher_timeframe_candles)
+            wants = 1.0 if action == SignalAction.BUY else -1.0
+            if higher_trend is not None and higher_trend * wants < 0:
+                higher_label = higher_timeframe_candles[-1].timeframe
+                veto_note = (
+                    f" Higher-timeframe ({higher_label}) trend disagrees; downgraded to watch."
+                )
+                action = SignalAction.WATCH
+
         risk_plan = self.risk_manager.plan(action, candles)
         suppressed = self._is_suppressed(symbol, action, now)
         if action in {SignalAction.BUY, SignalAction.SELL} and not suppressed:
             self._last_alert_at[(symbol.upper(), action)] = now
 
-        reason = self._build_reason(raw_score, components, suppressed)
+        reason = self._build_reason(raw_score, components, suppressed) + veto_note
         return MarketSignal(
             symbol=symbol.upper(),
             action=action,
@@ -106,7 +145,7 @@ class SignalEngine:
             created_at=now,
         )
 
-    def _technical_component(self, candles: list[Candle]) -> SignalComponent:
+    def _technical_component(self, candles: list[Candle]) -> tuple[SignalComponent, str]:
         closes = [candle.close for candle in candles]
         last_close = closes[-1]
 
@@ -116,104 +155,133 @@ class SignalEngine:
         current_rsi = latest_defined(rsi(closes, 14))
         _, _, histogram = macd(closes)
         current_histogram = latest_defined(histogram)
-        _, upper_band, lower_band = bollinger_bands(closes, 20)
+        middle_band, upper_band, _ = bollinger_bands(closes, 20)
+        middle = latest_defined(middle_band)
         upper = latest_defined(upper_band)
-        lower = latest_defined(lower_band)
+        current_atr = latest_defined(atr(candles, 14))
+        current_adx = latest_defined(adx(candles, 14))
 
-        score = 0.0
-        reasons: list[str] = []
+        if current_atr is None or current_atr <= 0:
+            current_atr = max(abs(last_close) * 0.01, 1e-9)
 
-        if ema_9 and ema_21:
-            if ema_9 > ema_21:
-                score += 0.25
-                reasons.append("short EMA above medium EMA")
-            else:
-                score -= 0.25
-                reasons.append("short EMA below medium EMA")
+        trend_score = self._trend_score(
+            last_close, ema_9, ema_21, ema_50, current_histogram, current_atr
+        )
+        reversion_score = self._reversion_score(last_close, current_rsi, middle, upper)
+        trend_weight, regime, regime_note = self._regime_weights(current_adx)
+        score = trend_weight * trend_score + (1 - trend_weight) * reversion_score
 
-        if ema_50:
-            if last_close > ema_50:
-                score += 0.2
-                reasons.append("price above EMA50")
-            else:
-                score -= 0.2
-                reasons.append("price below EMA50")
-
-        if current_histogram is not None:
-            if current_histogram > 0:
-                score += 0.2
-                reasons.append("MACD histogram positive")
-            else:
-                score -= 0.2
-                reasons.append("MACD histogram negative")
-
-        if current_rsi is not None:
-            if 45 <= current_rsi <= 70:
-                score += 0.2
-                reasons.append("RSI in bullish momentum zone")
-            elif 30 <= current_rsi < 45:
-                score -= 0.1
-                reasons.append("RSI weak but not capitulated")
-            elif current_rsi < 30:
-                score += 0.1
-                reasons.append("RSI oversold rebound watch")
-            else:
-                score -= 0.2
-                reasons.append("RSI overbought")
-
-        if upper and lower:
-            if last_close > upper:
-                score += 0.1
-                reasons.append("price breaking upper Bollinger band")
-            elif last_close < lower:
-                score -= 0.1
-                reasons.append("price losing lower Bollinger band")
-
-        return SignalComponent(
+        reason = f"{regime_note}, trend {trend_score:+.2f}, mean-reversion {reversion_score:+.2f}"
+        component = SignalComponent(
             name="technical",
             score=clamp(score, -1.0, 1.0),
             weight=self.config.technical_weight,
-            reason=", ".join(reasons) or "technical data neutral",
+            reason=reason,
         )
+        return component, regime
+
+    def _trend_score(
+        self,
+        last_close: float,
+        ema_9: float | None,
+        ema_21: float | None,
+        ema_50: float | None,
+        histogram: float | None,
+        atr_value: float,
+    ) -> float:
+        """One graded trend feature: correlated EMA/MACD readings are averaged, not stacked."""
+        parts: list[float] = []
+        if ema_9 is not None and ema_21 is not None:
+            parts.append(_grade((ema_9 - ema_21) / atr_value, 0.5))
+        if ema_50 is not None:
+            parts.append(_grade((last_close - ema_50) / atr_value, 2.0))
+        if histogram is not None:
+            parts.append(_grade(histogram / atr_value, 0.25))
+        return sum(parts) / len(parts) if parts else 0.0
+
+    def _reversion_score(
+        self,
+        last_close: float,
+        current_rsi: float | None,
+        middle: float | None,
+        upper: float | None,
+    ) -> float:
+        """Graded fade-the-extremes feature: positive near range lows, negative near highs."""
+        parts: list[float] = []
+        if current_rsi is not None:
+            parts.append(_grade(50.0 - current_rsi, 20.0))
+        if middle is not None and upper is not None and upper > middle:
+            band_position = (last_close - middle) / (upper - middle)
+            parts.append(_grade(-band_position, 1.0))
+        return sum(parts) / len(parts) if parts else 0.0
+
+    def _regime_weights(self, adx_value: float | None) -> tuple[float, str, str]:
+        """Blend trend-following vs mean-reversion by trend strength (ADX)."""
+        if adx_value is None:
+            return 0.65, "unknown", "regime unknown (ADX warming up)"
+        low = self.config.adx_range_threshold
+        high = self.config.adx_trend_threshold
+        if adx_value >= high:
+            return 0.9, "trending", f"trending regime (ADX {adx_value:.0f})"
+        if adx_value <= low:
+            return 0.25, "ranging", f"ranging regime (ADX {adx_value:.0f})"
+        blend = 0.25 + (0.9 - 0.25) * (adx_value - low) / (high - low)
+        return blend, "transitional", f"transitional regime (ADX {adx_value:.0f})"
+
+    def _timeframe_trend(self, candles: list[Candle]) -> float | None:
+        closes = [candle.close for candle in candles]
+        ema_9 = latest_defined(ema(closes, 9))
+        ema_21 = latest_defined(ema(closes, 21))
+        if ema_9 is None or ema_21 is None or ema_9 == ema_21:
+            return None
+        return 1.0 if ema_9 > ema_21 else -1.0
 
     def _volume_component(self, candles: list[Candle]) -> SignalComponent:
         volumes = [candle.volume for candle in candles]
-        volume_average = latest_defined(simple_moving_average(volumes, min(20, len(volumes))))
-        latest_volume = volumes[-1]
         closes = [candle.close for candle in candles]
-        price_change = (closes[-1] - closes[-2]) / closes[-2] if closes[-2] else 0.0
+        volume_average = latest_defined(simple_moving_average(volumes, min(20, len(volumes))))
 
         if not volume_average:
-            return SignalComponent("volume", 0.0, self.config.volume_weight, "volume neutral")
+            return SignalComponent(
+                "volume", 0.0, self.config.volume_weight, "volume neutral", has_data=False
+            )
 
-        ratio = latest_volume / volume_average
-        direction = 1.0 if price_change >= 0 else -1.0
-        if ratio >= 2.0:
-            score = 0.45 * direction
-            reason = "major volume expansion"
-        elif ratio >= 1.35:
-            score = 0.25 * direction
-            reason = "above-average volume"
-        elif ratio <= 0.6:
-            score = -0.1
-            reason = "weak participation"
-        else:
-            score = 0.0
-            reason = "normal volume"
+        ratio = volumes[-1] / volume_average
+        lookback = min(3, len(closes) - 1)
+        base = closes[-1 - lookback]
+        move = (closes[-1] - base) / base if base else 0.0
+        direction = 1.0 if move > 0 else -1.0 if move < 0 else 0.0
 
+        # Quiet tape carries no directional information; it must not push the score.
+        if ratio <= 0.6:
+            return SignalComponent(
+                "volume", 0.0, self.config.volume_weight, "weak participation"
+            )
+
+        expansion = clamp(ratio - 1.0, 0.0, 1.0)
+        score = expansion * direction
+        reason = (
+            f"volume x{ratio:.2f} vs 20-bar average confirming {lookback}-bar move"
+            if score
+            else "normal volume"
+        )
         return SignalComponent("volume", clamp(score, -1.0, 1.0), self.config.volume_weight, reason)
 
     def _sentiment_component(
         self, name: str, sentiment: SentimentSnapshot | None, weight: float
     ) -> SignalComponent:
-        if sentiment is None:
-            return SignalComponent(name, 0.0, weight, f"no {name} data")
+        if sentiment is None or sentiment.confidence <= 0:
+            return SignalComponent(name, 0.0, weight, f"no {name} data", has_data=False)
         return SignalComponent(
             name=name,
             score=sentiment.weighted_score(),
             weight=weight,
             reason=sentiment.reason,
         )
+
+    def reset_alert_state(self) -> None:
+        """Clear cooldown history so replays start from a clean slate."""
+        self._last_alert_at.clear()
 
     def _is_suppressed(self, symbol: str, action: SignalAction, now: datetime) -> bool:
         if action not in {SignalAction.BUY, SignalAction.SELL}:
@@ -235,3 +303,8 @@ class SignalEngine:
         )
         cooldown = " Alert suppressed by cooldown." if suppressed else ""
         return f"Composite view is {direction}. {explanations}.{cooldown}"
+
+
+def _grade(value: float, full_scale: float) -> float:
+    """Scale a raw reading so `full_scale` maps to 1.0, clamped to [-1, 1]."""
+    return clamp(value / full_scale, -1.0, 1.0)

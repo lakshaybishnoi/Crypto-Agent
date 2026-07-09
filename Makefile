@@ -4,7 +4,11 @@ PYTHON ?= python3
 VENV ?= .venv
 COMPOSE ?= docker compose
 
-.PHONY: help bootstrap doctor run test lint format docker-build up down logs clean
+.PHONY: help bootstrap doctor run test lint format evaluate docker-build up down logs clean
+
+SYMBOLS ?= BTCUSDT ETHUSDT
+TIMEFRAMES ?= 15m
+DAYS ?= 30
 
 help:
 	@printf '%s\n' \
@@ -15,6 +19,7 @@ help:
 		'  make doctor        Validate local configuration' \
 		'  make run           Run the local agent entry point' \
 		'  make test          Run pytest when available' \
+		'  make evaluate      Replay recent history and report signal accuracy' \
 		'  make lint          Run ruff check when available' \
 		'  make format        Run ruff format when available' \
 		'  make docker-build  Build the Docker image' \
@@ -34,6 +39,14 @@ run:
 test:
 	@if [ -x "$(VENV)/bin/python" ]; then PY="$(VENV)/bin/python"; else PY="$(PYTHON)"; fi; \
 	$$PY -m pytest tests
+
+evaluate:
+	@if [ -x "$(VENV)/bin/python" ]; then PY="$(VENV)/bin/python"; else PY="$(PYTHON)"; fi; \
+	$$PY -m crypto_agent.evaluation --symbols $(SYMBOLS) --timeframes $(TIMEFRAMES) --days $(DAYS)
+
+optimize:
+	@if [ -x "$(VENV)/bin/python" ]; then PY="$(VENV)/bin/python"; else PY="$(PYTHON)"; fi; \
+	$$PY -m crypto_agent.evaluation.optimize --symbols $(SYMBOLS) --timeframe $(TIMEFRAMES) --days 90 --test-days 30
 
 lint:
 	@if [ -x "$(VENV)/bin/ruff" ]; then "$(VENV)/bin/ruff" check .; \

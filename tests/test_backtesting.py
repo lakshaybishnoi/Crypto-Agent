@@ -53,6 +53,29 @@ def test_backtest_engine_replays_candles_and_returns_metrics() -> None:
     assert result.trades[-1].exit_reason == "end_of_backtest"
 
 
+def test_backtest_engine_resets_cooldown_state_between_runs() -> None:
+    signal_engine = SignalEngine(
+        SignalEngineConfig(
+            minimum_confidence=0.2,
+            watch_confidence=0.1,
+            cooldown_seconds=3_600,
+            minimum_candles=20,
+        )
+    )
+    engine = BacktestEngine(
+        signal_engine=signal_engine,
+        config=BacktestConfig(initial_cash=1_000.0, fee_rate=0.0, slippage_rate=0.0),
+    )
+    sentiment = SentimentSnapshot(source="fixture", score=1.0, confidence=1.0, reason="bullish")
+    candles = make_trending_candles()
+
+    first = engine.run(candles, news=sentiment, social=sentiment)
+    second = engine.run(candles, news=sentiment, social=sentiment)
+
+    assert first.trade_count == second.trade_count
+    assert first.total_return == second.total_return
+
+
 def test_backtest_engine_returns_empty_metrics_without_candles() -> None:
     engine = BacktestEngine(config=BacktestConfig(initial_cash=500.0))
 

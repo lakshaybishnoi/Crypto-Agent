@@ -18,6 +18,7 @@ from crypto_agent.core.models import (
     SignalAction,
     SignalComponent,
 )
+from crypto_agent.evaluation.outcomes import SignalOutcome
 
 DEFAULT_SQLITE_PATH = Path("data/crypto_agent.sqlite3")
 
@@ -83,6 +84,24 @@ _BACKTEST_COLUMNS = (
     "ended_at",
     "metrics_json",
     "created_at",
+)
+_SIGNAL_OUTCOME_COLUMNS = (
+    "id",
+    "signal_id",
+    "symbol",
+    "timeframe",
+    "action",
+    "confidence",
+    "entry",
+    "stop_loss",
+    "take_profit",
+    "signal_at",
+    "outcome",
+    "resolved_at",
+    "exit_price",
+    "return_pct",
+    "bars_to_resolution",
+    "forward_returns_json",
 )
 
 
@@ -160,6 +179,7 @@ class SQLiteStorage:
         self.sentiment = SentimentSnapshotRepository(self)
         self.paper_trades = PaperTradeRepository(self)
         self.backtests = BacktestResultRepository(self)
+        self.signal_outcomes = SignalOutcomeRepository(self)
 
     def execute(self, sql: str, params: Iterable[Any] = ()) -> sqlite3.Cursor:
         with self._lock:
@@ -492,6 +512,104 @@ class BacktestResultRepository:
         return _row_to_backtest_result(row) if row else None
 
 
+class SignalOutcomeRepository:
+    """Repository for labeled signal outcomes used to measure accuracy."""
+
+    def __init__(self, storage: SQLiteStorage) -> None:
+        self._storage = storage
+
+    def save(self, outcome: SignalOutcome) -> int:
+        cursor = self._storage.execute(
+            """
+            INSERT INTO signal_outcomes (
+                signal_id, symbol, timeframe, action, confidence, entry, stop_loss,
+                take_profit, signal_at, outcome, resolved_at, exit_price, return_pct,
+                bars_to_resolution, forward_returns_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                outcome.signal_id,
+                outcome.symbol.upper(),
+                outcome.timeframe,
+                outcome.action,
+                outcome.confidence,
+                outcome.entry,
+                outcome.stop_loss,
+                outcome.take_profit,
+                _serialize_datetime(outcome.signal_at),
+                outcome.outcome,
+                _serialize_datetime(outcome.resolved_at) if outcome.resolved_at else None,
+                outcome.exit_price,
+                outcome.return_pct,
+                outcome.bars_to_resolution,
+                _to_json(outcome.forward_returns),
+            ),
+        )
+        return int(cursor.lastrowid)
+
+    def list(
+        self,
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        outcome: str | None = None,
+        limit: int | None = None,
+    ) -> list[SignalOutcome]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if symbol:
+            clauses.append("symbol = ?")
+            params.append(symbol.upper())
+        if timeframe:
+            clauses.append("timeframe = ?")
+            params.append(timeframe)
+        if outcome:
+            clauses.append("outcome = ?")
+            params.append(outcome)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        sql = (
+            f"SELECT {_columns(_SIGNAL_OUTCOME_COLUMNS)} FROM signal_outcomes{where} "
+            "ORDER BY signal_at ASC"
+        )
+        sql, params = _with_limit(sql, params, limit)
+        return [_row_to_signal_outcome(row) for row in self._storage.fetch_all(sql, params)]
+
+    def hit_rate(
+        self,
+        symbol: str | None = None,
+        timeframe: str | None = None,
+    ) -> dict[str, Any]:
+        """Aggregate decided outcomes into a win/loss summary."""
+        clauses = ["outcome IN ('take_profit', 'stop_loss')"]
+        params: list[Any] = []
+        if symbol:
+            clauses.append("symbol = ?")
+            params.append(symbol.upper())
+        if timeframe:
+            clauses.append("timeframe = ?")
+            params.append(timeframe)
+        row = self._storage.fetch_one(
+            f"""
+            SELECT
+                COUNT(*) AS decided,
+                SUM(CASE WHEN outcome = 'take_profit' THEN 1 ELSE 0 END) AS wins,
+                AVG(return_pct) AS avg_return_pct
+            FROM signal_outcomes
+            WHERE {' AND '.join(clauses)}
+            """,
+            params,
+        )
+        decided = row["decided"] or 0
+        wins = row["wins"] or 0
+        return {
+            "decided": decided,
+            "wins": wins,
+            "losses": decided - wins,
+            "hit_rate": wins / decided if decided else None,
+            "avg_return_pct": row["avg_return_pct"],
+        }
+
+
 def _candle_to_row(candle: Candle) -> tuple[Any, ...]:
     return (
         candle.symbol.upper(),
@@ -621,6 +739,27 @@ def _row_to_paper_trade(row: sqlite3.Row) -> PaperTrade:
         fees=row["fees"],
         status=row["status"],
         metadata=dict(_from_json(row["metadata_json"], {})),
+    )
+
+
+def _row_to_signal_outcome(row: sqlite3.Row) -> SignalOutcome:
+    return SignalOutcome(
+        id=row["id"],
+        signal_id=row["signal_id"],
+        symbol=row["symbol"],
+        timeframe=row["timeframe"],
+        action=row["action"],
+        confidence=row["confidence"],
+        entry=row["entry"],
+        stop_loss=row["stop_loss"],
+        take_profit=row["take_profit"],
+        signal_at=_parse_datetime(row["signal_at"]),
+        outcome=row["outcome"],
+        resolved_at=_parse_datetime(row["resolved_at"]) if row["resolved_at"] else None,
+        exit_price=row["exit_price"],
+        return_pct=row["return_pct"],
+        bars_to_resolution=row["bars_to_resolution"],
+        forward_returns=dict(_from_json(row["forward_returns_json"], {})),
     )
 
 
@@ -815,5 +954,29 @@ _SCHEMA = (
     """
     CREATE INDEX IF NOT EXISTS idx_backtest_results_lookup
     ON backtest_results(strategy, symbol, timeframe, created_at)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS signal_outcomes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        signal_id INTEGER REFERENCES market_signals(id) ON DELETE SET NULL,
+        symbol TEXT NOT NULL,
+        timeframe TEXT NOT NULL,
+        action TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        entry REAL NOT NULL,
+        stop_loss REAL,
+        take_profit REAL,
+        signal_at TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        resolved_at TEXT,
+        exit_price REAL,
+        return_pct REAL,
+        bars_to_resolution INTEGER,
+        forward_returns_json TEXT NOT NULL DEFAULT '{}'
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_signal_outcomes_lookup
+    ON signal_outcomes(symbol, timeframe, outcome, signal_at)
     """,
 )
