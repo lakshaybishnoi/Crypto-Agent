@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from crypto_agent.core.models import SocialPost
 from crypto_agent.core.providers import AsyncJSONClient, SocialProvider
@@ -49,7 +50,9 @@ class HttpSocialProvider(SocialProvider):
         return tuple(parse_social_response(payload, default_platform=self.platform))[:limit]
 
 
-def parse_social_response(payload: Any, *, default_platform: str = "unknown") -> Sequence[SocialPost]:
+def parse_social_response(
+    payload: Any, *, default_platform: str = "unknown"
+) -> Sequence[SocialPost]:
     if isinstance(payload, Mapping):
         rows = payload.get("posts") or payload.get("items") or payload.get("results") or []
     else:
@@ -69,9 +72,13 @@ def parse_social_response(payload: Any, *, default_platform: str = "unknown") ->
             SocialPost(
                 text=str(text),
                 platform=str(row.get("platform") or default_platform),
-                author=_optional_str(row.get("author") or row.get("user") or row.get("username")),
+                author=_optional_str(
+                    row.get("author") or row.get("user") or row.get("username")
+                ),
                 url=_optional_str(row.get("url") or row.get("link")),
-                published_at=_parse_datetime(row.get("publishedAt") or row.get("published_at") or row.get("date")),
+                published_at=_parse_datetime(
+                    row.get("publishedAt") or row.get("published_at") or row.get("date")
+                ),
                 sentiment=_optional_float(row.get("sentiment") or row.get("score")),
                 metrics=_parse_metrics(row.get("metrics") or row),
                 raw=dict(row),
@@ -116,4 +123,3 @@ def _parse_datetime(value: Any) -> datetime | None:
         return datetime.fromisoformat(text)
     except ValueError:
         return None
-

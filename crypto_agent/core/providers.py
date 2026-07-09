@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, Protocol, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any, Protocol
 
 from crypto_agent.core.models import Asset, NewsItem, SocialPost
 
@@ -12,8 +13,7 @@ class AsyncJSONClient(Protocol):
         *,
         params: Mapping[str, Any] | None = None,
         headers: Mapping[str, str] | None = None,
-    ) -> Any:
-        ...
+    ) -> Any: ...
 
 
 class MarketDataProvider(Protocol):
@@ -22,15 +22,12 @@ class MarketDataProvider(Protocol):
         *,
         vs_currency: str = "usd",
         limit: int = 100,
-    ) -> Sequence[Asset]:
-        ...
+    ) -> Sequence[Asset]: ...
 
 
 class NewsProvider(Protocol):
-    async def search(self, query: str, *, limit: int = 10) -> Sequence[NewsItem]:
-        ...
+    async def search(self, query: str, *, limit: int = 10) -> Sequence[NewsItem]: ...
 
 
 class SocialProvider(Protocol):
-    async def search(self, query: str, *, limit: int = 10) -> Sequence[SocialPost]:
-        ...
+    async def search(self, query: str, *, limit: int = 10) -> Sequence[SocialPost]: ...

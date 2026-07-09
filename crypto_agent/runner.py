@@ -29,9 +29,7 @@ async def run_live_agent(
         raise RuntimeError("No assets available to monitor")
 
     notifier = _build_notifier()
-    streamer = BinanceKlineStreamer(
-        BinanceStreamBuilder(base_url=settings.binance_stream_base_url)
-    )
+    streamer = BinanceKlineStreamer(BinanceStreamBuilder(base_url=settings.binance_stream_base_url))
 
     LOGGER.info("Monitoring %s on intervals %s", ", ".join(symbols), ", ".join(intervals))
     async for candle in streamer.stream(symbols, intervals):

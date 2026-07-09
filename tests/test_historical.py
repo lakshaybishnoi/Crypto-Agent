@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from crypto_agent.ingestion.historical import parse_binance_kline_row
 
@@ -18,6 +18,6 @@ def test_parse_binance_kline_row_maps_core_fields() -> None:
 
     assert candle.symbol == "BTCUSDT"
     assert candle.timeframe == "15m"
-    assert candle.open_time == datetime.fromtimestamp(1_700_000_000, tz=timezone.utc)
+    assert candle.open_time == datetime.fromtimestamp(1_700_000_000, tz=UTC)
     assert candle.close == 105.0
     assert candle.volume == 12.5

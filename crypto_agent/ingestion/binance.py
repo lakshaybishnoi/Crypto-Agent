@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Mapping
+from datetime import UTC, datetime
+from typing import Any
 
 from crypto_agent.core.models import Candle
 
@@ -89,7 +89,10 @@ def build_combined_stream_url(
     base_url: str = "wss://stream.binance.com:9443/stream",
     quote_asset: str = "usdt",
 ) -> str:
-    streams = "/".join(build_stream_name(symbol, channel=channel, quote_asset=quote_asset) for symbol in symbols)
+    streams = "/".join(
+        build_stream_name(symbol, channel=channel, quote_asset=quote_asset)
+        for symbol in symbols
+    )
     return f"{_combined_base_url(base_url)}?streams={streams}"
 
 
@@ -133,4 +136,4 @@ def _optional_float(value: Any) -> float | None:
 def _optional_datetime_ms(value: Any) -> datetime | None:
     if value is None or value == "":
         return None
-    return datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc)
+    return datetime.fromtimestamp(int(value) / 1000, tz=UTC)

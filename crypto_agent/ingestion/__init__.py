@@ -13,7 +13,11 @@ from crypto_agent.ingestion.coingecko import CoinGeckoClient
 from crypto_agent.ingestion.historical import BinanceHistoricalClient
 from crypto_agent.ingestion.news import HttpNewsProvider, InMemoryNewsProvider, NullNewsProvider
 from crypto_agent.ingestion.sentiment import StaticSentimentProvider
-from crypto_agent.ingestion.social import HttpSocialProvider, InMemorySocialProvider, NullSocialProvider
+from crypto_agent.ingestion.social import (
+    HttpSocialProvider,
+    InMemorySocialProvider,
+    NullSocialProvider,
+)
 
 __all__ = [
     "BinanceKlineStreamer",

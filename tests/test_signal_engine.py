@@ -1,11 +1,11 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from crypto_agent.core.models import Candle, SentimentSnapshot, SignalAction
 from crypto_agent.signals.engine import SignalEngine, SignalEngineConfig
 
 
 def make_trending_candles(symbol: str = "BTCUSDT") -> list[Candle]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     candles: list[Candle] = []
     price = 100.0
     for index in range(80):
@@ -54,7 +54,7 @@ def test_signal_engine_respects_cooldown_for_duplicate_alerts() -> None:
     candles = make_trending_candles()
     news = SentimentSnapshot(source="news", score=0.8, confidence=1, reason="positive news")
     social = SentimentSnapshot(source="social", score=0.6, confidence=1, reason="positive social")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     first = engine.evaluate("BTCUSDT", candles, news=news, social=social, now=now)
     second = engine.evaluate(

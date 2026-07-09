@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from crypto_agent.core.models import Asset
 
-
 STABLECOIN_SYMBOLS = frozenset(
     {
         "busd",

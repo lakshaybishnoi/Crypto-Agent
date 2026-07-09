@@ -11,7 +11,12 @@ from crypto_agent.core.models import (
     SignalComponent,
     SocialPost,
 )
-from crypto_agent.core.providers import AsyncJSONClient, MarketDataProvider, NewsProvider, SocialProvider
+from crypto_agent.core.providers import (
+    AsyncJSONClient,
+    MarketDataProvider,
+    NewsProvider,
+    SocialProvider,
+)
 from crypto_agent.core.stablecoins import is_stablecoin
 
 __all__ = [

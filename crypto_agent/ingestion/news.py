@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from crypto_agent.core.models import NewsItem
 from crypto_agent.core.providers import AsyncJSONClient, NewsProvider
@@ -71,8 +72,12 @@ def parse_news_response(payload: Any) -> Sequence[NewsItem]:
                 title=str(title),
                 url=_optional_str(row.get("url") or row.get("link")),
                 source=_optional_str(source),
-                published_at=_parse_datetime(row.get("publishedAt") or row.get("published_at") or row.get("date")),
-                summary=_optional_str(row.get("description") or row.get("summary") or row.get("content")),
+                published_at=_parse_datetime(
+                    row.get("publishedAt") or row.get("published_at") or row.get("date")
+                ),
+                summary=_optional_str(
+                    row.get("description") or row.get("summary") or row.get("content")
+                ),
                 sentiment=_optional_float(row.get("sentiment") or row.get("score")),
                 raw=dict(row),
             )
@@ -103,4 +108,3 @@ def _parse_datetime(value: Any) -> datetime | None:
         return datetime.fromisoformat(text)
     except ValueError:
         return None
-

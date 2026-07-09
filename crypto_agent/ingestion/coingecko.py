@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Sequence
+from typing import Any
 
 from crypto_agent.core.models import Asset, AssetMarket
 from crypto_agent.core.providers import AsyncJSONClient, MarketDataProvider
 from crypto_agent.core.stablecoins import STABLECOIN_SYMBOLS
 from crypto_agent.ingestion.http import URLlibAsyncJSONClient
-
 
 DEFAULT_STABLECOINS = {
     "usdt",

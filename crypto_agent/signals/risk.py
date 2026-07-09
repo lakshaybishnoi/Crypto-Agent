@@ -34,10 +34,14 @@ class RiskManager:
         stop_distance = current_atr * self.stop_atr_multiplier
         if action == SignalAction.BUY:
             stop_loss = entry - stop_distance
-            take_profit = [entry + (stop_distance * multiple) for multiple in self.target_multipliers]
+            take_profit = [
+                entry + (stop_distance * multiple) for multiple in self.target_multipliers
+            ]
         else:
             stop_loss = entry + stop_distance
-            take_profit = [entry - (stop_distance * multiple) for multiple in self.target_multipliers]
+            take_profit = [
+                entry - (stop_distance * multiple) for multiple in self.target_multipliers
+            ]
 
         volatility_ratio = current_atr / entry if entry else 1.0
         if volatility_ratio >= 0.05:

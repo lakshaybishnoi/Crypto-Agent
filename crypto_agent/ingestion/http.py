@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -48,4 +49,3 @@ def _with_query(url: str, params: Mapping[str, Any] | None) -> str:
         return url
     separator = "&" if "?" in url else "?"
     return f"{url}{separator}{urlencode(params, doseq=True)}"
-

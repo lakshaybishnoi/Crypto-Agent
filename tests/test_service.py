@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from crypto_agent.core.models import Asset, Candle, SentimentSnapshot, SignalAction
 from crypto_agent.services.agent import AgentService
@@ -55,7 +55,7 @@ def make_service(provider: FakeMarketProvider) -> AgentService:
 
 
 def make_trending_candles(symbol: str, count: int = 60) -> list[Candle]:
-    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    start = datetime(2026, 1, 1, tzinfo=UTC)
     candles = []
     for index in range(count):
         price = 100.0 + index
@@ -91,7 +91,9 @@ class AgentServiceTests(unittest.TestCase):
         self.assertEqual(provider.calls, [{"vs_currency": "usd", "limit": 12}])
 
     def test_refresh_and_evaluate_scores_signals_for_refreshed_assets(self):
-        provider = FakeMarketProvider([Asset(id="bitcoin", symbol="BTC", name="Bitcoin", market_cap_rank=1)])
+        provider = FakeMarketProvider(
+            [Asset(id="bitcoin", symbol="BTC", name="Bitcoin", market_cap_rank=1)]
+        )
         service = make_service(provider)
         for candle in make_trending_candles("BTCUSDT"):
             service.ingest_candle(candle)

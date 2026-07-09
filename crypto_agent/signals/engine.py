@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from crypto_agent.analysis.indicators import (
     bollinger_bands,
@@ -51,7 +51,7 @@ class SignalEngine:
         timeframe: str | None = None,
         now: datetime | None = None,
     ) -> MarketSignal:
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
         timeframe = timeframe or (candles[-1].timeframe if candles else "unknown")
 
         if len(candles) < self.config.minimum_candles:
@@ -227,7 +227,9 @@ class SignalEngine:
         self, raw_score: float, components: list[SignalComponent], suppressed: bool
     ) -> str:
         direction = "bullish" if raw_score > 0 else "bearish" if raw_score < 0 else "neutral"
-        strongest = sorted(components, key=lambda component: abs(component.weighted_score), reverse=True)
+        strongest = sorted(
+            components, key=lambda component: abs(component.weighted_score), reverse=True
+        )
         explanations = "; ".join(
             f"{component.name}: {component.reason}" for component in strongest[:3]
         )

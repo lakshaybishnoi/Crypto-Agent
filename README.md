@@ -102,6 +102,14 @@ CRYPTO_AGENT_CMD="python3 -m crypto_agent.runner"
 
 Keep Telegram disabled in development unless you are intentionally testing notifications.
 
+## Daily Reports
+
+`crypto_agent.reports.DailyReportBuilder` renders signals, paper/backtest trades, and PnL into
+Telegram-ready Markdown text. It accepts current `MarketSignal` objects and plain dictionaries, so
+paper and backtest jobs can feed the same formatter.
+
+See [docs/phase2.md](docs/phase2.md) for paper mode, backtest, persistence, and report usage.
+
 ## API Keys
 
 Add only the providers the application code actually uses. Common placeholders are included in `.env.example`:
@@ -152,4 +160,5 @@ More detail lives in [docs/operations.md](docs/operations.md).
 
 ## Roadmap
 
-The MVP roadmap is phased from scaffold to live alerting, then backtesting and optional paper execution. See [docs/roadmap.md](docs/roadmap.md).
+The MVP roadmap is phased from scaffold to live alerting, reporting, backtesting, and optional paper
+execution. See [docs/roadmap.md](docs/roadmap.md).

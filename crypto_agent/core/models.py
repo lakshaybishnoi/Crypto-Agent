@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Mapping
+from typing import Any
 
 
 class SignalAction(StrEnum):
@@ -57,8 +58,8 @@ class Candle:
         kline = payload["k"]
         return cls(
             symbol=payload["s"],
-            open_time=datetime.fromtimestamp(kline["t"] / 1000, tz=timezone.utc),
-            close_time=datetime.fromtimestamp(kline["T"] / 1000, tz=timezone.utc),
+            open_time=datetime.fromtimestamp(kline["t"] / 1000, tz=UTC),
+            close_time=datetime.fromtimestamp(kline["T"] / 1000, tz=UTC),
             open=float(kline["o"]),
             high=float(kline["h"]),
             low=float(kline["l"]),
@@ -77,7 +78,7 @@ class SentimentSnapshot:
     confidence: float = 1.0
     headline_count: int = 0
     reason: str = "no sentiment signal"
-    captured_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    captured_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def weighted_score(self) -> float:
         return clamp(self.score, -1.0, 1.0) * clamp(self.confidence, 0.0, 1.0)
@@ -131,7 +132,7 @@ class MarketSignal:
     risk_level: str
     components: list[SignalComponent] = field(default_factory=list)
     suppressed: bool = False
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def as_dict(self) -> dict[str, Any]:
         return {

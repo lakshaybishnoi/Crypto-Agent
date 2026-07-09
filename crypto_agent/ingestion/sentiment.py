@@ -9,8 +9,7 @@ from crypto_agent.core.models import SentimentSnapshot
 
 
 class SentimentProvider(Protocol):
-    async def score(self, symbol: str) -> SentimentSnapshot:
-        ...
+    async def score(self, symbol: str) -> SentimentSnapshot: ...
 
 
 @dataclass(slots=True)

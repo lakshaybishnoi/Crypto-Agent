@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from crypto_agent.analysis.indicators import atr, bollinger_bands, ema, macd, rsi
 from crypto_agent.core.models import Candle
@@ -45,7 +45,7 @@ def test_atr_uses_candle_ranges() -> None:
     candles = [
         Candle(
             symbol="BTCUSDT",
-            open_time=datetime.now(timezone.utc),
+            open_time=datetime.now(UTC),
             open=100 + index,
             high=103 + index,
             low=99 + index,

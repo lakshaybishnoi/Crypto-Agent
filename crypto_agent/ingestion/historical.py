@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from crypto_agent.core.models import Candle
@@ -55,4 +55,4 @@ def parse_binance_kline_row(symbol: str, interval: str, row: list[Any]) -> Candl
 
 
 def _from_ms(value: int | float | str) -> datetime:
-    return datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc)
+    return datetime.fromtimestamp(int(value) / 1000, tz=UTC)

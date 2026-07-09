@@ -39,7 +39,9 @@ class ProviderTests(unittest.TestCase):
         http_client = FakeHTTPClient(
             [{"id": "bitcoin", "symbol": "btc", "name": "Bitcoin", "market_cap_rank": 1}]
         )
-        client = CoinGeckoClient(base_url="https://example.test/api", api_key="demo", http_client=http_client)
+        client = CoinGeckoClient(
+            base_url="https://example.test/api", api_key="demo", http_client=http_client
+        )
 
         assets = asyncio.run(client.top_market_cap(limit=1))
 
@@ -67,7 +69,13 @@ class ProviderTests(unittest.TestCase):
         ticker = parse_ticker_message(
             {
                 "stream": "btcusdt@ticker",
-                "data": {"s": "BTCUSDT", "c": "65000.25", "P": "1.5", "v": "123.4", "E": 1710000000000},
+                "data": {
+                    "s": "BTCUSDT",
+                    "c": "65000.25",
+                    "P": "1.5",
+                    "v": "123.4",
+                    "E": 1710000000000,
+                },
             }
         )
 

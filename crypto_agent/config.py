@@ -19,7 +19,9 @@ if BaseSettings is not None:
     class Settings(BaseSettings):
         """Runtime configuration for local development and production deployment."""
 
-        model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+        model_config = SettingsConfigDict(
+            env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        )
 
         app_name: str = "Crypto Signal Agent"
         environment: str = Field(default="local", validation_alias="ENVIRONMENT")
@@ -27,20 +29,30 @@ if BaseSettings is not None:
 
         quote_asset: str = Field(default="USDT", validation_alias="QUOTE_ASSET")
         top_asset_limit: int = Field(default=5, validation_alias="TOP_ASSET_LIMIT")
-        signal_interval_seconds: int = Field(default=60, validation_alias="SIGNAL_INTERVAL_SECONDS")
-        signal_cooldown_seconds: int = Field(default=900, validation_alias="SIGNAL_COOLDOWN_SECONDS")
-        minimum_confidence: float = Field(default=0.62, validation_alias="MINIMUM_CONFIDENCE")
+        signal_interval_seconds: int = Field(
+            default=60, validation_alias="SIGNAL_INTERVAL_SECONDS"
+        )
+        signal_cooldown_seconds: int = Field(
+            default=900, validation_alias="SIGNAL_COOLDOWN_SECONDS"
+        )
+        minimum_confidence: float = Field(
+            default=0.62, validation_alias="MINIMUM_CONFIDENCE"
+        )
 
         coingecko_base_url: str = Field(
             default="https://api.coingecko.com/api/v3", validation_alias="COINGECKO_BASE_URL"
         )
-        coingecko_api_key: str | None = Field(default=None, validation_alias="COINGECKO_API_KEY")
+        coingecko_api_key: str | None = Field(
+            default=None, validation_alias="COINGECKO_API_KEY"
+        )
         binance_stream_base_url: str = Field(
             default="wss://stream.binance.com:9443/stream",
             validation_alias="BINANCE_STREAM_BASE_URL",
         )
 
-        telegram_bot_token: str | None = Field(default=None, validation_alias="TELEGRAM_BOT_TOKEN")
+        telegram_bot_token: str | None = Field(
+            default=None, validation_alias="TELEGRAM_BOT_TOKEN"
+        )
         telegram_chat_id: str | None = Field(default=None, validation_alias="TELEGRAM_CHAT_ID")
 
         database_url: str = Field(
@@ -48,12 +60,18 @@ if BaseSettings is not None:
             validation_alias="DATABASE_URL",
         )
         redis_url: str = Field(default="redis://redis:6379/0", validation_alias="REDIS_URL")
-        sqlite_path: str = Field(default="./data/crypto_agent.sqlite3", validation_alias="SQLITE_PATH")
+        sqlite_path: str = Field(
+            default="./data/crypto_agent.sqlite3", validation_alias="SQLITE_PATH"
+        )
         paper_starting_balance: float = Field(
             default=10_000.0, validation_alias="PAPER_STARTING_BALANCE"
         )
-        paper_max_active_trades: int = Field(default=5, validation_alias="PAPER_MAX_ACTIVE_TRADES")
-        paper_risk_per_trade_pct: float = Field(default=1.0, validation_alias="MAX_POSITION_RISK_PCT")
+        paper_max_active_trades: int = Field(
+            default=5, validation_alias="PAPER_MAX_ACTIVE_TRADES"
+        )
+        paper_risk_per_trade_pct: float = Field(
+            default=1.0, validation_alias="MAX_POSITION_RISK_PCT"
+        )
         paper_fee_bps: float = Field(default=10.0, validation_alias="PAPER_FEE_BPS")
         paper_slippage_bps: float = Field(default=5.0, validation_alias="PAPER_SLIPPAGE_BPS")
 
@@ -106,7 +124,9 @@ else:
                 overrides,
                 "database_url",
             )
-            self.redis_url = _setting("REDIS_URL", "redis://redis:6379/0", overrides, "redis_url")
+            self.redis_url = _setting(
+                "REDIS_URL", "redis://redis:6379/0", overrides, "redis_url"
+            )
             self.sqlite_path = _setting(
                 "SQLITE_PATH", "./data/crypto_agent.sqlite3", overrides, "sqlite_path"
             )
@@ -119,7 +139,9 @@ else:
             self.paper_risk_per_trade_pct = float(
                 _setting("MAX_POSITION_RISK_PCT", "1.0", overrides, "paper_risk_per_trade_pct")
             )
-            self.paper_fee_bps = float(_setting("PAPER_FEE_BPS", "10", overrides, "paper_fee_bps"))
+            self.paper_fee_bps = float(
+                _setting("PAPER_FEE_BPS", "10", overrides, "paper_fee_bps")
+            )
             self.paper_slippage_bps = float(
                 _setting("PAPER_SLIPPAGE_BPS", "5", overrides, "paper_slippage_bps")
             )
